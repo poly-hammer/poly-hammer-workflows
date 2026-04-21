@@ -1,0 +1,173 @@
+name: Hammer Build Tool Worker
+on:
+  workflow_call:
+    inputs:
+      product-id:
+        description: "What Hammer Build workflow to use"
+        required: true
+        type: string
+      version-tag:
+        description: "What versioned release tag of the source code to use."
+        required: true
+        type: string
+      python-version:
+        description: "Python version used to build and deploy"
+        required: true
+        type: string
+    secrets:
+      GH_PAT:
+        required: true
+
+jobs:
+  build-windows-amd64:
+    name: Windows amd64 Build (Python ${{ inputs.python-version }})
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:      
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Validate Input
+        shell: powershell
+        run: |
+          uv run --with poly-hammer-build-tool hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+
+      - name: Install Build Dependencies
+        shell: powershell
+        run: |
+          choco install cmake -version=3.31.0 -y --ignore-package-exit-codes
+          choco install visualstudio2022buildtools -y --ignore-package-exit-codes
+          choco install visualstudio2022-workload-vctools -y --ignore-package-exit-codes
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Run Hammer Build Tool
+        shell: powershell
+        run: |
+          uv run --with poly-hammer-build-tool hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+      
+      - name: Upload Windows amd64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-amd64-py${{ inputs.python-version }}
+          path: dist/windows/amd64/
+          if-no-files-found: error
+          overwrite: true
+
+  build-linux-x86_64:
+    name: Linux x86_64 Build (Python ${{ inputs.python-version }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      checks: write
+
+    container:
+      image: ghcr.io/poly-hammer/hammer-build-tool-linux:python-${{ inputs.python-version }}
+      options: --user root
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GH_PAT }}
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Validate Input
+        run: |
+          uv run --with poly-hammer-build-tool hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+
+      - name: Run Hammer Build Tool
+        run: |
+          uv run --with poly-hammer-build-tool hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+
+      - name: Upload Linux x86_64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux-x86_64-py${{ inputs.python-version }}
+          path: dist/linux/x86_64/
+          if-no-files-found: error
+          overwrite: true
+
+  build-mac-arm64:
+    name: Mac arm64 Build (Python ${{ inputs.python-version }})
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      PCRE_MAJOR_VERSION: "10"
+      PCRE_MINOR_VERSION: "44"
+    steps:      
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Validate Input
+        run: |
+          uv run --with poly-hammer-build-tool hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+
+      - name: Install Homebrew and Dependencies
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew install make bzip2 libffi zlib libxml2 rsync llvm autoconf automake tcl-tk
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Run Hammer Build Tool
+        run: |
+          uv run --with poly-hammer-build-tool hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+
+      - name: Upload Mac arm64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-mac-arm64-py${{ inputs.python-version }}
+          path: dist/mac/arm64/
+          if-no-files-found: error
+          overwrite: true
+
+  release:
+    needs: [build-linux-x86_64, build-windows-amd64, build-mac-arm64]
+    name: Release (Python ${{ inputs.python-version }})
+    runs-on: ubuntu-latest
+    steps:      
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Download Mac arm64 Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-mac-arm64-py${{ inputs.python-version }}
+          path: dist/mac/arm64
+          
+      - name: Download Linux x86_64 Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-linux-x86_64-py${{ inputs.python-version }}
+          path: dist/linux/x86_64
+
+      - name: Download Windows amd64 Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-windows-amd64-py${{ inputs.python-version }}
+          path: dist/windows/amd64
+
+      - name: Deploy Addon
+        run: |
+          uv run --with poly-hammer-build-tool hammer deploy --github-token "${{ secrets.GH_PAT }}" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}"
