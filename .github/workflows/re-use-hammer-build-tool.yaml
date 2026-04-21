@@ -20,8 +20,6 @@ on:
         type: boolean
         default: false
     secrets:
-      GH_USER:
-        required: false
       GH_PAT:
         required: true
 
@@ -70,7 +68,7 @@ jobs:
         env:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          uv run --python "${{ inputs.python-version }}" --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
+          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
           exit $LASTEXITCODE
 
       - name: Report Validation Failure
@@ -93,12 +91,12 @@ jobs:
             "",
             "### Log excerpt",
             "",
-            "```text"
+            '```text'
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           if (Test-Path validate.log) {
             Get-Content -Path validate.log -Tail 120 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
-          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           exit 1
 
       - name: Install Build Dependencies
@@ -115,7 +113,7 @@ jobs:
         env:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          uv run --python "${{ inputs.python-version }}" --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
+          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
           exit $LASTEXITCODE
 
       - name: Report Build Failure
@@ -138,12 +136,12 @@ jobs:
             "",
             "### Log excerpt",
             "",
-            "```text"
+            '```text'
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           if (Test-Path build.log) {
             Get-Content -Path build.log -Tail 120 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
-          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           exit 1
       
       - name: Upload Windows amd64 Artifacts
@@ -167,7 +165,7 @@ jobs:
       image: ghcr.io/poly-hammer/hammer-build-tool-linux:python-${{ inputs.python-version }}
       options: --user root
       credentials:
-        username: ${{ secrets.GH_USER != '' && secrets.GH_USER || github.actor }}
+        username: ${{ github.actor }}
         password: ${{ secrets.GH_PAT }}
 
     steps:
@@ -208,7 +206,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -241,7 +239,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -323,7 +321,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -361,7 +359,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -458,7 +456,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
+          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
 
       - name: Report Deploy Failure
         if: steps.deploy.outcome == 'failure'
