@@ -21,7 +21,7 @@ on:
         default: false
     secrets:
       GH_PAT:
-        required: true
+        required: false
 
 jobs:
   build-windows-amd64:
@@ -36,9 +36,42 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Validate Input
+        id: validate
+        continue-on-error: true
+        shell: powershell
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+        run: |
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
+          exit $LASTEXITCODE
+
+      - name: Report Validation Failure
+        if: steps.validate.outcome == 'failure'
         shell: powershell
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          $message = "Validation failed for Windows amd64 on Python ${{ inputs.python-version }}."
+          Write-Output "::error title=Validation failed::$message"
+          @(
+            "## Validation failed",
+            "",
+            "- Job: Windows amd64 Build",
+            "- Python version: ${{ inputs.python-version }}",
+            "- Product ID: ${{ inputs.product-id }}",
+            "- Version tag: ${{ inputs.version-tag }}",
+            "",
+            "### Failure summary",
+            "",
+            "The validation step failed before the build started.",
+            "",
+            "### Log excerpt",
+            "",
+            "```text"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path validate.log) {
+            Get-Content -Path validate.log -Tail 120 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          exit 1
 
       - name: Install Build Dependencies
         shell: powershell
@@ -53,9 +86,42 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - name: Run Hammer Build Tool
+        id: build
+        continue-on-error: true
+        shell: powershell
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+        run: |
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
+          exit $LASTEXITCODE
+
+      - name: Report Build Failure
+        if: steps.build.outcome == 'failure'
         shell: powershell
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          $message = "Build failed for Windows amd64 on Python ${{ inputs.python-version }}."
+          Write-Output "::error title=Build failed::$message"
+          @(
+            "## Build failed",
+            "",
+            "- Job: Windows amd64 Build",
+            "- Python version: ${{ inputs.python-version }}",
+            "- Product ID: ${{ inputs.product-id }}",
+            "- Version tag: ${{ inputs.version-tag }}",
+            "",
+            "### Failure summary",
+            "",
+            "The build step failed after validation completed successfully.",
+            "",
+            "### Log excerpt",
+            "",
+            "```text"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path build.log) {
+            Get-Content -Path build.log -Tail 120 | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          "```" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          exit 1
       
       - name: Upload Windows amd64 Artifacts
         uses: actions/upload-artifact@v4
@@ -70,31 +136,91 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      contents: read
       checks: write
+      packages: read
 
     container:
       image: ghcr.io/poly-hammer/hammer-build-tool-linux:python-${{ inputs.python-version }}
       options: --user root
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GH_PAT }}
+        password: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
 
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}
+          token: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
       - name: Validate Input
+        id: validate
+        continue-on-error: true
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          set -o pipefail
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+
+      - name: Report Validation Failure
+        if: steps.validate.outcome == 'failure'
+        run: |
+          echo "::error title=Validation failed::Validation failed for Linux x86_64 on Python ${{ inputs.python-version }}."
+          {
+            echo "## Validation failed"
+            echo
+            echo "- Job: Linux x86_64 Build"
+            echo "- Python version: ${{ inputs.python-version }}"
+            echo "- Product ID: ${{ inputs.product-id }}"
+            echo "- Version tag: ${{ inputs.version-tag }}"
+            echo
+            echo "### Failure summary"
+            echo
+            echo "The validation step failed before the build started."
+            echo
+            echo "### Log excerpt"
+            echo
+            echo '```text'
+            tail -n 120 validate.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Run Hammer Build Tool
+        id: build
+        continue-on-error: true
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          set -o pipefail
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+
+      - name: Report Build Failure
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error title=Build failed::Build failed for Linux x86_64 on Python ${{ inputs.python-version }}."
+          {
+            echo "## Build failed"
+            echo
+            echo "- Job: Linux x86_64 Build"
+            echo "- Python version: ${{ inputs.python-version }}"
+            echo "- Product ID: ${{ inputs.product-id }}"
+            echo "- Version tag: ${{ inputs.version-tag }}"
+            echo
+            echo "### Failure summary"
+            echo
+            echo "The build step failed after validation completed successfully."
+            echo
+            echo "### Log excerpt"
+            echo
+            echo '```text'
+            tail -n 120 build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Upload Linux x86_64 Artifacts
         uses: actions/upload-artifact@v4
@@ -119,8 +245,37 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Validate Input
+        id: validate
+        continue-on-error: true
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          set -o pipefail
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+
+      - name: Report Validation Failure
+        if: steps.validate.outcome == 'failure'
+        run: |
+          echo "::error title=Validation failed::Validation failed for Mac arm64 on Python ${{ inputs.python-version }}."
+          {
+            echo "## Validation failed"
+            echo
+            echo "- Job: Mac arm64 Build"
+            echo "- Python version: ${{ inputs.python-version }}"
+            echo "- Product ID: ${{ inputs.product-id }}"
+            echo "- Version tag: ${{ inputs.version-tag }}"
+            echo
+            echo "### Failure summary"
+            echo
+            echo "The validation step failed before the build started."
+            echo
+            echo "### Log excerpt"
+            echo
+            echo '```text'
+            tail -n 120 validate.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Install Homebrew and Dependencies
         run: |
@@ -133,8 +288,37 @@ jobs:
           python-version: ${{ inputs.python-version }}
 
       - name: Run Hammer Build Tool
+        id: build
+        continue-on-error: true
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          set -o pipefail
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+
+      - name: Report Build Failure
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error title=Build failed::Build failed for Mac arm64 on Python ${{ inputs.python-version }}."
+          {
+            echo "## Build failed"
+            echo
+            echo "- Job: Mac arm64 Build"
+            echo "- Python version: ${{ inputs.python-version }}"
+            echo "- Product ID: ${{ inputs.product-id }}"
+            echo "- Version tag: ${{ inputs.version-tag }}"
+            echo
+            echo "### Failure summary"
+            echo
+            echo "The build step failed after validation completed successfully."
+            echo
+            echo "### Log excerpt"
+            echo
+            echo '```text'
+            tail -n 120 build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Upload Mac arm64 Artifacts
         uses: actions/upload-artifact@v4
@@ -174,5 +358,34 @@ jobs:
           path: dist/windows/amd64
 
       - name: Deploy Addon
+        id: deploy
+        continue-on-error: true
+        env:
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "${{ secrets.GH_PAT }}" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}"
+          set -o pipefail
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
+
+      - name: Report Deploy Failure
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          echo "::error title=Deploy failed::Deploy failed on Python ${{ inputs.python-version }}."
+          {
+            echo "## Deploy failed"
+            echo
+            echo "- Job: Release"
+            echo "- Python version: ${{ inputs.python-version }}"
+            echo "- Product ID: ${{ inputs.product-id }}"
+            echo "- Version tag: ${{ inputs.version-tag }}"
+            echo
+            echo "### Failure summary"
+            echo
+            echo "The deploy step failed after all platform builds completed."
+            echo
+            echo "### Log excerpt"
+            echo
+            echo '```text'
+            tail -n 120 deploy.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
