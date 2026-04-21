@@ -20,6 +20,8 @@ on:
         type: boolean
         default: false
     secrets:
+      GH_USER:
+        required: false
       GH_PAT:
         required: true
 
@@ -40,6 +42,27 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
 
+      - name: Resolve Hammer Package Spec
+        shell: powershell
+        run: |
+          $indexUrl = if ("${{ inputs.use-test-pypi }}" -eq "true") { "https://test.pypi.org/simple/" } else { "https://pypi.org/simple/" }
+          $pipOut = python -m pip index versions poly-hammer-build-tool --index-url $indexUrl 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error title=Failed to resolve latest package::Unable to query poly-hammer-build-tool versions from $indexUrl"
+            $pipOut | Out-String | Write-Output
+            exit 1
+          }
+          $line = $pipOut | Select-String -Pattern '^Available versions:\s*(.+)$' | Select-Object -First 1
+          if (-not $line) {
+            Write-Output "::error title=Failed to parse package versions::Could not find available versions in pip output."
+            $pipOut | Out-String | Write-Output
+            exit 1
+          }
+          $latest = ($line.Matches[0].Groups[1].Value.Split(',')[0]).Trim()
+          $spec = "poly-hammer-build-tool==$latest"
+          "HAMMER_PACKAGE_VERSION=$latest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "HAMMER_PACKAGE_SPEC=$spec" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Validate Input
         id: validate
         continue-on-error: true
@@ -47,7 +70,7 @@ jobs:
         env:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
+          uv run --python "${{ inputs.python-version }}" --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
           exit $LASTEXITCODE
 
       - name: Report Validation Failure
@@ -92,7 +115,7 @@ jobs:
         env:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
+          uv run --python "${{ inputs.python-version }}" --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
           exit $LASTEXITCODE
 
       - name: Report Build Failure
@@ -144,7 +167,7 @@ jobs:
       image: ghcr.io/poly-hammer/hammer-build-tool-linux:python-${{ inputs.python-version }}
       options: --user root
       credentials:
-        username: ${{ github.actor }}
+        username: ${{ secrets.GH_USER != '' && secrets.GH_USER || github.actor }}
         password: ${{ secrets.GH_PAT }}
 
     steps:
@@ -156,6 +179,28 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Resolve Hammer Package Spec
+        run: |
+          index_url="https://pypi.org/simple/"
+          if [ "${{ inputs.use-test-pypi }}" = "true" ]; then
+            index_url="https://test.pypi.org/simple/"
+          fi
+          pip_out="$(/usr/local/bin/python${{ inputs.python-version }} -m pip index versions poly-hammer-build-tool --index-url "$index_url" 2>&1)"
+          if [ $? -ne 0 ]; then
+            echo "::error title=Failed to resolve latest package::Unable to query poly-hammer-build-tool versions from $index_url"
+            echo "$pip_out"
+            exit 1
+          fi
+          latest="$(echo "$pip_out" | sed -n 's/^Available versions:[[:space:]]*//p' | head -n1 | cut -d',' -f1 | xargs)"
+          if [ -z "$latest" ]; then
+            echo "::error title=Failed to parse package versions::Could not find available versions in pip output."
+            echo "$pip_out"
+            exit 1
+          fi
+          spec="poly-hammer-build-tool==$latest"
+          echo "HAMMER_PACKAGE_VERSION=$latest" >> "$GITHUB_ENV"
+          echo "HAMMER_PACKAGE_SPEC=$spec" >> "$GITHUB_ENV"
+
       - name: Validate Input
         id: validate
         continue-on-error: true
@@ -163,7 +208,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -196,7 +241,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -249,6 +294,28 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
 
+      - name: Resolve Hammer Package Spec
+        run: |
+          index_url="https://pypi.org/simple/"
+          if [ "${{ inputs.use-test-pypi }}" = "true" ]; then
+            index_url="https://test.pypi.org/simple/"
+          fi
+          pip_out="$(python -m pip index versions poly-hammer-build-tool --index-url "$index_url" 2>&1)"
+          if [ $? -ne 0 ]; then
+            echo "::error title=Failed to resolve latest package::Unable to query poly-hammer-build-tool versions from $index_url"
+            echo "$pip_out"
+            exit 1
+          fi
+          latest="$(echo "$pip_out" | sed -n 's/^Available versions:[[:space:]]*//p' | head -n1 | cut -d',' -f1 | xargs)"
+          if [ -z "$latest" ]; then
+            echo "::error title=Failed to parse package versions::Could not find available versions in pip output."
+            echo "$pip_out"
+            exit 1
+          fi
+          spec="poly-hammer-build-tool==$latest"
+          echo "HAMMER_PACKAGE_VERSION=$latest" >> "$GITHUB_ENV"
+          echo "HAMMER_PACKAGE_SPEC=$spec" >> "$GITHUB_ENV"
+
       - name: Validate Input
         id: validate
         continue-on-error: true
@@ -256,7 +323,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -294,7 +361,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -344,6 +411,28 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
 
+      - name: Resolve Hammer Package Spec
+        run: |
+          index_url="https://pypi.org/simple/"
+          if [ "${{ inputs.use-test-pypi }}" = "true" ]; then
+            index_url="https://test.pypi.org/simple/"
+          fi
+          pip_out="$(python -m pip index versions poly-hammer-build-tool --index-url "$index_url" 2>&1)"
+          if [ $? -ne 0 ]; then
+            echo "::error title=Failed to resolve latest package::Unable to query poly-hammer-build-tool versions from $index_url"
+            echo "$pip_out"
+            exit 1
+          fi
+          latest="$(echo "$pip_out" | sed -n 's/^Available versions:[[:space:]]*//p' | head -n1 | cut -d',' -f1 | xargs)"
+          if [ -z "$latest" ]; then
+            echo "::error title=Failed to parse package versions::Could not find available versions in pip output."
+            echo "$pip_out"
+            exit 1
+          fi
+          spec="poly-hammer-build-tool==$latest"
+          echo "HAMMER_PACKAGE_VERSION=$latest" >> "$GITHUB_ENV"
+          echo "HAMMER_PACKAGE_SPEC=$spec" >> "$GITHUB_ENV"
+
       - name: Download Mac arm64 Artifacts
         uses: actions/download-artifact@v8
         with:
@@ -369,7 +458,7 @@ jobs:
           HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
+          uv run --python "${{ inputs.python-version }}" --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
 
       - name: Report Deploy Failure
         if: steps.deploy.outcome == 'failure'
