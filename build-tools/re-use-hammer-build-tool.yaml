@@ -14,6 +14,11 @@ on:
         description: "Python version used to build and deploy"
         required: true
         type: string
+      use-test-pypi:
+        description: "Install poly-hammer-build-tool from TestPyPI instead of PyPI"
+        required: false
+        type: boolean
+        default: false
     secrets:
       GH_PAT:
         required: true
@@ -33,7 +38,7 @@ jobs:
       - name: Validate Input
         shell: powershell
         run: |
-          uv run --with poly-hammer-build-tool hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
 
       - name: Install Build Dependencies
         shell: powershell
@@ -50,7 +55,7 @@ jobs:
       - name: Run Hammer Build Tool
         shell: powershell
         run: |
-          uv run --with poly-hammer-build-tool hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
       
       - name: Upload Windows amd64 Artifacts
         uses: actions/upload-artifact@v4
@@ -85,11 +90,11 @@ jobs:
 
       - name: Validate Input
         run: |
-          uv run --with poly-hammer-build-tool hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
 
       - name: Run Hammer Build Tool
         run: |
-          uv run --with poly-hammer-build-tool hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
 
       - name: Upload Linux x86_64 Artifacts
         uses: actions/upload-artifact@v4
@@ -115,7 +120,7 @@ jobs:
 
       - name: Validate Input
         run: |
-          uv run --with poly-hammer-build-tool hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
 
       - name: Install Homebrew and Dependencies
         run: |
@@ -129,7 +134,7 @@ jobs:
 
       - name: Run Hammer Build Tool
         run: |
-          uv run --with poly-hammer-build-tool hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}"
 
       - name: Upload Mac arm64 Artifacts
         uses: actions/upload-artifact@v4
@@ -170,4 +175,4 @@ jobs:
 
       - name: Deploy Addon
         run: |
-          uv run --with poly-hammer-build-tool hammer deploy --github-token "${{ secrets.GH_PAT }}" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}"
+          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "${{ secrets.GH_PAT }}" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}"
