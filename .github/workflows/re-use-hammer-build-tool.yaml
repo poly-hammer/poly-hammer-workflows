@@ -21,7 +21,7 @@ on:
         default: false
     secrets:
       GH_PAT:
-        required: false
+        required: true
 
 jobs:
   build-windows-amd64:
@@ -30,19 +30,24 @@ jobs:
     timeout-minutes: 60
     steps:      
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
       - name: Validate Input
         id: validate
         continue-on-error: true
         shell: powershell
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
+          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
           exit $LASTEXITCODE
 
       - name: Report Validation Failure
@@ -80,19 +85,14 @@ jobs:
           choco install visualstudio2022buildtools -y --ignore-package-exit-codes
           choco install visualstudio2022-workload-vctools -y --ignore-package-exit-codes
 
-      - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
-
       - name: Run Hammer Build Tool
         id: build
         continue-on-error: true
         shell: powershell
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
+          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$env:HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
           exit $LASTEXITCODE
 
       - name: Report Build Failure
@@ -124,7 +124,7 @@ jobs:
           exit 1
       
       - name: Upload Windows amd64 Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-windows-amd64-py${{ inputs.python-version }}
           path: dist/windows/amd64/
@@ -145,13 +145,13 @@ jobs:
       options: --user root
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+        password: ${{ secrets.GH_PAT }}
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          token: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -160,10 +160,10 @@ jobs:
         id: validate
         continue-on-error: true
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -193,10 +193,10 @@ jobs:
         id: build
         continue-on-error: true
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -223,7 +223,7 @@ jobs:
           exit 1
 
       - name: Upload Linux x86_64 Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-linux-x86_64-py${{ inputs.python-version }}
           path: dist/linux/x86_64/
@@ -239,19 +239,24 @@ jobs:
       PCRE_MINOR_VERSION: "44"
     steps:      
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
 
       - name: Validate Input
         id: validate
         continue-on-error: true
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -282,19 +287,14 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           brew install make bzip2 libffi zlib libxml2 rsync llvm autoconf automake tcl-tk
 
-      - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python-version }}
-
       - name: Run Hammer Build Tool
         id: build
         continue-on-error: true
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "$HAMMER_GITHUB_TOKEN" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -321,7 +321,7 @@ jobs:
           exit 1
 
       - name: Upload Mac arm64 Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-mac-arm64-py${{ inputs.python-version }}
           path: dist/mac/arm64/
@@ -334,25 +334,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:      
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
       - name: Download Mac arm64 Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-mac-arm64-py${{ inputs.python-version }}
           path: dist/mac/arm64
           
       - name: Download Linux x86_64 Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-linux-x86_64-py${{ inputs.python-version }}
           path: dist/linux/x86_64
 
       - name: Download Windows amd64 Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dist-windows-amd64-py${{ inputs.python-version }}
           path: dist/windows/amd64
@@ -361,10 +366,10 @@ jobs:
         id: deploy
         continue-on-error: true
         env:
-          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          HAMMER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -o pipefail
-          uv run --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
+          uv run --python "${{ inputs.python-version }}" --with poly-hammer-build-tool ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "$HAMMER_GITHUB_TOKEN" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
 
       - name: Report Deploy Failure
         if: steps.deploy.outcome == 'failure'
