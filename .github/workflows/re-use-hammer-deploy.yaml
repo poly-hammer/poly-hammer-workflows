@@ -1,0 +1,139 @@
+name: Hammer Deploy Worker
+on:
+  workflow_call:
+    inputs:
+      product-id:
+        description: "What Hammer Build workflow to use"
+        required: true
+        type: string
+      version-tag:
+        description: "What versioned release tag of the source code to use."
+        required: true
+        type: string
+      python-versions:
+        description: "JSON list of Python versions whose build artifacts to download and combine"
+        required: true
+        type: string
+      use-test-pypi:
+        description: "Install poly-hammer-build-tool from TestPyPI instead of PyPI"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GH_PAT:
+        required: true
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Resolve Hammer Package Spec
+        run: |
+          index_url="https://pypi.org/simple/"
+          if [ "${{ inputs.use-test-pypi }}" = "true" ]; then
+            index_url="https://test.pypi.org/simple/"
+          fi
+          pip_out="$(python -m pip index versions poly-hammer-build-tool --index-url "$index_url" 2>&1)"
+          if [ $? -ne 0 ]; then
+            echo "::error title=Failed to resolve latest package::Unable to query poly-hammer-build-tool versions from $index_url"
+            echo "$pip_out"
+            exit 1
+          fi
+          latest="$(echo "$pip_out" | sed -n 's/^Available versions:[[:space:]]*//p' | head -n1 | cut -d',' -f1 | xargs)"
+          if [ -z "$latest" ]; then
+            echo "::error title=Failed to parse package versions::Could not find available versions in pip output."
+            echo "$pip_out"
+            exit 1
+          fi
+          spec="poly-hammer-build-tool==$latest"
+          echo "HAMMER_PACKAGE_VERSION=$latest" >> "$GITHUB_ENV"
+          echo "HAMMER_PACKAGE_SPEC=$spec" >> "$GITHUB_ENV"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          merge-multiple: false
+          path: artifacts/
+
+      - name: Arrange artifacts into dist layout
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts/ -type f | head -50
+          echo ""
+          python_versions='${{ inputs.python-versions }}'
+          for pyver in $(echo "$python_versions" | python -c "import sys,json; [print(v) for v in json.load(sys.stdin)]"); do
+            echo "--- Processing Python $pyver ---"
+            for platform_dir in "windows/amd64" "linux/x86_64" "mac/arm64"; do
+              platform_key=$(echo "$platform_dir" | tr '/' '-')
+              src="artifacts/dist-${platform_key}-py${pyver}"
+              dst="dist/${platform_dir}"
+              if [ -d "$src" ]; then
+                mkdir -p "$dst"
+                cp -rn "$src"/* "$dst"/ 2>/dev/null || cp -r "$src"/* "$dst"/
+                echo "  Copied $src -> $dst"
+              else
+                echo "  Warning: $src not found"
+              fi
+            done
+          done
+          echo ""
+          echo "Final dist layout:"
+          find dist/ -type f | head -50
+
+      - name: Deploy Addon
+        id: deploy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          uv run --python "3.11" --no-cache --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer deploy --github-token "${{ secrets.GH_PAT }}" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-versions "${{ inputs.python-versions }}" 2>&1 | tee deploy.log
+
+      - name: Report Deploy Failure
+        if: steps.deploy.outcome == 'failure'
+        run: |
+          echo "::error title=Deploy failed::Deploy failed."
+          echo ""
+          echo "========== DEPLOY FAILURE DETAILS =========="
+          echo "Job:            Release (combined deploy)"
+          echo "Product ID:     ${{ inputs.product-id }}"
+          echo "Version tag:    ${{ inputs.version-tag }}"
+          echo "Python versions: ${{ inputs.python-versions }}"
+          echo "Summary:        The deploy step failed after all platform builds completed."
+          echo "============================================="
+          if [ -f deploy.log ]; then
+            echo ""
+            echo "--- Log excerpt (last 120 lines) ---"
+            tail -n 120 deploy.log
+          fi
+          echo ""
+          {
+            echo "## Deploy failed"
+            echo
+            echo "- Job: Release (combined deploy)"
+            echo "- Product ID: ${{ inputs.product-id }}"
+            echo "- Version tag: ${{ inputs.version-tag }}"
+            echo "- Python versions: ${{ inputs.python-versions }}"
+            echo
+            echo "### Failure summary"
+            echo
+            echo "The deploy step failed after all platform builds completed."
+            echo
+            echo "### Log excerpt"
+            echo
+            echo '```text'
+            tail -n 120 deploy.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

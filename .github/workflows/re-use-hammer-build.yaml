@@ -31,6 +31,8 @@ jobs:
     steps:      
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          ignore-empty-workdir: true
 
       - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v6
@@ -61,10 +63,12 @@ jobs:
       - name: Validate Input
         id: validate
         continue-on-error: true
-        shell: powershell
+        shell: cmd
         run: |
-          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath validate.log
-          exit $LASTEXITCODE
+          uv run --python "${{ inputs.python-version }}" --no-cache --refresh-package poly-hammer-build-tool --with "%HAMMER_PACKAGE_SPEC%" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" > validate.log 2>&1
+          set UV_EXIT=%ERRORLEVEL%
+          type validate.log
+          exit /b %UV_EXIT%
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -118,10 +122,12 @@ jobs:
       - name: Run Hammer Build Tool
         id: build
         continue-on-error: true
-        shell: powershell
+        shell: cmd
         run: |
-          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$env:HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" *>&1 | Tee-Object -FilePath build.log
-          exit $LASTEXITCODE
+          uv run --python "${{ inputs.python-version }}" --no-cache --refresh-package poly-hammer-build-tool --with "%HAMMER_PACKAGE_SPEC%" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" > build.log 2>&1
+          set UV_EXIT=%ERRORLEVEL%
+          type build.log
+          exit /b %UV_EXIT%
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -192,6 +198,8 @@ jobs:
     steps:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          ignore-empty-workdir: true
 
       - name: Resolve Hammer Package Spec
         run: |
@@ -220,7 +228,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --no-cache --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -265,7 +273,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "/usr/local/bin/python${{ inputs.python-version }}" --no-cache --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -323,6 +331,8 @@ jobs:
     steps:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          ignore-empty-workdir: true
 
       - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v6
@@ -356,7 +366,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
+          uv run --python "${{ inputs.python-version }}" --no-cache --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer validate --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee validate.log
 
       - name: Report Validation Failure
         if: steps.validate.outcome == 'failure'
@@ -406,7 +416,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
+          uv run --python "${{ inputs.python-version }}" --no-cache --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--default-index https://test.pypi.org/simple/ --index https://pypi.org/simple/' || '' }} hammer build --github-token "${{ secrets.GH_PAT }}" --product-id "${{ inputs.product-id }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee build.log
 
       - name: Report Build Failure
         if: steps.build.outcome == 'failure'
@@ -453,104 +463,3 @@ jobs:
           path: dist/mac/arm64/
           if-no-files-found: error
           overwrite: true
-
-  release:
-    needs: [build-linux-x86_64, build-windows-amd64, build-mac-arm64]
-    name: Release (Python ${{ inputs.python-version }})
-    runs-on: ubuntu-latest
-    steps:      
-      - name: Checkout Repo
-        uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python-version }}
-
-      - name: Resolve Hammer Package Spec
-        run: |
-          index_url="https://pypi.org/simple/"
-          if [ "${{ inputs.use-test-pypi }}" = "true" ]; then
-            index_url="https://test.pypi.org/simple/"
-          fi
-          pip_out="$(python -m pip index versions poly-hammer-build-tool --index-url "$index_url" 2>&1)"
-          if [ $? -ne 0 ]; then
-            echo "::error title=Failed to resolve latest package::Unable to query poly-hammer-build-tool versions from $index_url"
-            echo "$pip_out"
-            exit 1
-          fi
-          latest="$(echo "$pip_out" | sed -n 's/^Available versions:[[:space:]]*//p' | head -n1 | cut -d',' -f1 | xargs)"
-          if [ -z "$latest" ]; then
-            echo "::error title=Failed to parse package versions::Could not find available versions in pip output."
-            echo "$pip_out"
-            exit 1
-          fi
-          spec="poly-hammer-build-tool==$latest"
-          echo "HAMMER_PACKAGE_VERSION=$latest" >> "$GITHUB_ENV"
-          echo "HAMMER_PACKAGE_SPEC=$spec" >> "$GITHUB_ENV"
-
-      - name: Download Mac arm64 Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: dist-mac-arm64-py${{ inputs.python-version }}
-          path: dist/mac/arm64
-          
-      - name: Download Linux x86_64 Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: dist-linux-x86_64-py${{ inputs.python-version }}
-          path: dist/linux/x86_64
-
-      - name: Download Windows amd64 Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: dist-windows-amd64-py${{ inputs.python-version }}
-          path: dist/windows/amd64
-
-      - name: Deploy Addon
-        id: deploy
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          uv run --python "${{ inputs.python-version }}" --refresh-package poly-hammer-build-tool --with "$HAMMER_PACKAGE_SPEC" ${{ inputs.use-test-pypi && '--index https://test.pypi.org/simple/' || '' }} hammer deploy --github-token "${{ secrets.GH_PAT }}" --repo "${{ github.repository }}" --product-id "${{ inputs.product-id }}" --version-tag "${{ inputs.version-tag }}" --python-version "${{ inputs.python-version }}" 2>&1 | tee deploy.log
-
-      - name: Report Deploy Failure
-        if: steps.deploy.outcome == 'failure'
-        run: |
-          echo "::error title=Deploy failed::Deploy failed on Python ${{ inputs.python-version }}."
-          echo ""
-          echo "========== DEPLOY FAILURE DETAILS =========="
-          echo "Job:            Release"
-          echo "Python version: ${{ inputs.python-version }}"
-          echo "Product ID:     ${{ inputs.product-id }}"
-          echo "Version tag:    ${{ inputs.version-tag }}"
-          echo "Summary:        The deploy step failed after all platform builds completed."
-          echo "============================================="
-          if [ -f deploy.log ]; then
-            echo ""
-            echo "--- Log excerpt (last 120 lines) ---"
-            tail -n 120 deploy.log
-          fi
-          echo ""
-          {
-            echo "## Deploy failed"
-            echo
-            echo "- Job: Release"
-            echo "- Python version: ${{ inputs.python-version }}"
-            echo "- Product ID: ${{ inputs.product-id }}"
-            echo "- Version tag: ${{ inputs.version-tag }}"
-            echo
-            echo "### Failure summary"
-            echo
-            echo "The deploy step failed after all platform builds completed."
-            echo
-            echo "### Log excerpt"
-            echo
-            echo '```text'
-            tail -n 120 deploy.log
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 1
