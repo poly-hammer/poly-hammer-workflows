@@ -1,0 +1,61 @@
+name: Hammer Prepare Inputs Worker
+on:
+  workflow_call:
+    inputs:
+      product-id:
+        description: "What Hammer Build workflow to use"
+        required: true
+        type: string
+      version-tag:
+        description: "What versioned release tag of the source code to use."
+        required: true
+        type: string
+      python-versions:
+        description: "JSON list of Python versions to build"
+        required: false
+        type: string
+        default: '["3.11", "3.13"]'
+      use-test-pypi:
+        description: "Install poly-hammer-build-tool from TestPyPI instead of PyPI"
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      product-id:
+        description: "Resolved product id"
+        value: ${{ jobs.prepare.outputs.product-id }}
+      version-tag:
+        description: "Resolved version tag"
+        value: ${{ jobs.prepare.outputs.version-tag }}
+      python-versions:
+        description: "Resolved JSON list of Python versions"
+        value: ${{ jobs.prepare.outputs.python-versions }}
+      use-test-pypi:
+        description: "Resolved TestPyPI flag"
+        value: ${{ jobs.prepare.outputs.use-test-pypi }}
+
+jobs:
+  prepare:
+    name: Prepare Workflow Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      product-id: ${{ steps.product-id.outputs.value }}
+      version-tag: ${{ steps.version-tag.outputs.value }}
+      python-versions: ${{ steps.python-versions.outputs.value }}
+      use-test-pypi: ${{ steps.use-test-pypi.outputs.value }}
+    steps:
+      - name: Expose product id
+        id: product-id
+        run: echo 'value=${{ inputs.product-id }}' >> "$GITHUB_OUTPUT"
+
+      - name: Expose version tag
+        id: version-tag
+        run: echo 'value=${{ inputs.version-tag }}' >> "$GITHUB_OUTPUT"
+
+      - name: Expose Python versions
+        id: python-versions
+        run: echo 'value=${{ inputs.python-versions }}' >> "$GITHUB_OUTPUT"
+
+      - name: Expose TestPyPI flag
+        id: use-test-pypi
+        run: echo 'value=${{ inputs.use-test-pypi }}' >> "$GITHUB_OUTPUT"
