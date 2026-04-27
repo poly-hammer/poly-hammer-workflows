@@ -17,6 +17,10 @@ on:
       base:
         required: true
         type: string
+      base-branch:
+        default: "main"
+        required: false
+        type: string
       extra:
         required: false
         type: string
@@ -43,6 +47,7 @@ jobs:
           path: ${{ inputs.base }}-addon
           lfs: true
           submodules: true
+          ref: ${{ inputs.base-branch }}
           token: ${{ secrets.GH_PAT }}
 
       - name: Checkout ${{ inputs.base }}-bindings Repo
