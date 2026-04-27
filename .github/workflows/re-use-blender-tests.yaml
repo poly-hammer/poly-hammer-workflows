@@ -95,6 +95,29 @@ jobs:
           uv sync --python ${{ inputs.python-version }}
           uv pip install --upgrade bpy==${{ inputs.blender-version }}.*
 
+      - name: Show Workspace Tree
+        shell: bash
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          root = Path.cwd()
+          print(f"Workspace root: {root}")
+
+          def walk(directory: Path, prefix: str = "") -> None:
+              entries = sorted(directory.iterdir(), key=lambda path: (path.is_file(), path.name.lower()))
+              for index, entry in enumerate(entries):
+                  connector = "└── " if index == len(entries) - 1 else "├── "
+                  suffix = "/" if entry.is_dir() else ""
+                  print(f"{prefix}{connector}{entry.name}{suffix}")
+                  if entry.is_dir():
+                      extension = "    " if index == len(entries) - 1 else "│   "
+                      walk(entry, prefix + extension)
+
+          walk(root)
+          PY
+
+
       - name: Run Tests
         shell: bash
         env:
