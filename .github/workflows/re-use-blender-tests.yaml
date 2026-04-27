@@ -105,15 +105,15 @@ jobs:
           print(f"Workspace root: {root}")
 
           def walk(directory: Path, prefix: str = "") -> None:
-            entries = sorted(
-              [path for path in directory.iterdir() if path.is_dir() and path.name != ".venv"],
-              key=lambda path: path.name.lower(),
-            )
+              entries = sorted(
+                  [path for path in directory.iterdir() if path.is_dir() and path.name != ".venv"],
+                  key=lambda path: path.name.lower(),
+              )
               for index, entry in enumerate(entries):
-              connector = "└── " if index == len(entries) - 1 else "├── "
-              print(f"{prefix}{connector}{entry.name}/")
-              extension = "    " if index == len(entries) - 1 else "│   "
-              walk(entry, prefix + extension)
+                  connector = "└── " if index == len(entries) - 1 else "├── "
+                  print(f"{prefix}{connector}{entry.name}/")
+                  extension = "    " if index == len(entries) - 1 else "│   "
+                  walk(entry, prefix + extension)
 
           walk(root)
           PY
