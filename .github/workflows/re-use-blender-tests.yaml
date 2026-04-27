@@ -32,7 +32,7 @@ on:
 jobs:
   test:
     timeout-minutes: 30
-    name: Tests
+    name: Tests ${{ inputs.runner-os }} Blender ${{ inputs.blender-version }}
     runs-on: ${{ inputs.runner-os }}
     env:
       PYTHONUNBUFFERED: 1
