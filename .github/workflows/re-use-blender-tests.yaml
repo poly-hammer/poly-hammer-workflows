@@ -41,7 +41,7 @@ jobs:
       RUNNING_CI: 1
 
     steps:
-      - name: Checkout Repo
+      - name: Checkout ${{ inputs.base }}-addon Repo
         uses: actions/checkout@v6
         with:
           repository: "poly-hammer/${{ inputs.base == 'character-dna' && 'meta-human-dna' || inputs.base }}-addon"
@@ -68,7 +68,7 @@ jobs:
       # Only checkout the extra repo if it's specified
       # This addon uses the base addon as a dependency, 
       # so we need to have it checked out to run the tests.
-      - name: Checkout Extra Repo
+      - name: Checkout ${{ inputs.extra }}-addon Repo
         if: inputs.extra != ''
         uses: actions/checkout@v6
         with:
