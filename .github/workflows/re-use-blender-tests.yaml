@@ -44,6 +44,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v6
         with:
+          repository: "poly-hammer/${{ inputs.base == 'character-dna' && 'meta-human-dna' || inputs.base }}-addon"
           path: ${{ inputs.base }}-addon
           lfs: true
           submodules: true
