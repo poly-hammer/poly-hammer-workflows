@@ -80,6 +80,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           version: "latest"
+          enable-cache: true
+          cache-suffix: "py${{ inputs.python-version }}-bl${{ inputs.blender-version }}"
 
       - name: Install Dependencies
         run: |
