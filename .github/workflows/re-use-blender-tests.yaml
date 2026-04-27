@@ -120,15 +120,6 @@ jobs:
           walk(root)
           PY
 
-
-      - name: Run Tests
-        shell: bash
-        env:
-          PYTHONWARNINGS: ignore
-        run: |
-          cd ${{ inputs.extra || inputs.base }}-addon
-          uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=.coveragerc --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml || true
-
       - name: Run Tests
         shell: bash
         env:
@@ -162,6 +153,13 @@ jobs:
           walk(root / "character-dna-addon" / "src" / "addons" / "character_dna" / "bindings")
           PY
 
+      - name: Run Tests
+        shell: bash
+        env:
+          PYTHONWARNINGS: ignore
+        run: |
+          cd ${{ inputs.extra || inputs.base }}-addon
+          uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=.coveragerc --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml || true
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v6
