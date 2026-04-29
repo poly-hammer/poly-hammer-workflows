@@ -64,7 +64,7 @@ jobs:
         run: uv run python -m poly_hammer_utils.extension.${{ inputs.addon-id }}
 
       - name: Create Legacy Release
-        if: inputs.legacy-release == 'true'
+        if: ${{ inputs.legacy-release }}
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           ADDON_FOLDER: src/addons/${{ inputs.addon-id }}
