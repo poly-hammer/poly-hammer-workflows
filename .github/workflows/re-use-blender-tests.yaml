@@ -58,13 +58,6 @@ jobs:
           path: "${{ inputs.base }}-bindings"
           token: ${{ secrets.GH_PAT }}
 
-      - name: Checkout ${{ inputs.base }}-core Repo
-        uses: actions/checkout@v6
-        with:
-          repository: "poly-hammer/${{ inputs.base }}-core"
-          path: "${{ inputs.base }}-core"
-          token: ${{ secrets.GH_PAT }}
-
       # Only checkout the extra repo if it's specified
       # This addon uses the base addon as a dependency, 
       # so we need to have it checked out to run the tests.
