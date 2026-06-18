@@ -12,10 +12,6 @@ on:
       addon-id:
         required: true
         type: string
-      legacy-release:
-        required: false
-        default: false
-        type: boolean
     secrets:
       GH_PAT:
         required: true
@@ -61,12 +57,3 @@ jobs:
           ENVIRONMENT: ${{ inputs.environment }}
           PORTAL_API_KEY: ${{ inputs.environment == 'production' && secrets.POLY_HAMMER_PORTAL_API_KEY_PRODUCTION || secrets.POLY_HAMMER_PORTAL_API_KEY_STAGING }}
         run: uv run python -m poly_hammer_utils.extension.${{ inputs.addon-id }}
-
-      - name: Create Legacy Release
-        if: ${{ inputs.legacy-release }}
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-          ADDON_FOLDER: src/addons/${{ inputs.addon-id }}
-          GITHUB_REPO: ${{ github.repository }}
-          CORE_REPO: ${{ secrets.CORE_REPO }}
-        run: uv run python -m poly_hammer_utils.addon.release
