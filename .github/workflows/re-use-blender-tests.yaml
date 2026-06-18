@@ -82,37 +82,6 @@ jobs:
           enable-cache: true
           cache-suffix: "py${{ inputs.python-version }}-bl${{ inputs.blender-version }}"
 
-      # Hosted Ubuntu runners only have ~7 GB RAM and a 4 GB swap file. Blender's
-      # bpy module plus the session-scoped DNA/RigLogic test fixtures can exceed
-      # that, which gets the runner agent OOM-killed (it surfaces as a "runner
-      # received a shutdown signal" / "operation was canceled" rather than an
-      # exit-137). Enlarging swap gives the suite the headroom to finish.
-      - name: Increase Swap Space (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          echo "::group::Swap and memory before"
-          free -h
-          df -h /mnt . || true
-          echo "::endgroup::"
-
-          # Resize the existing swap file in place, or create one if none exists.
-          SWAP_FILE=$(swapon --show=NAME --noheadings | head -n 1)
-          if [ -z "$SWAP_FILE" ]; then
-            SWAP_FILE=/mnt/swapfile
-          else
-            sudo swapoff "$SWAP_FILE"
-            sudo rm -f "$SWAP_FILE"
-          fi
-          sudo fallocate -l 13G "$SWAP_FILE"
-          sudo chmod 600 "$SWAP_FILE"
-          sudo mkswap "$SWAP_FILE"
-          sudo swapon "$SWAP_FILE"
-
-          echo "::group::Swap and memory after"
-          free -h
-          echo "::endgroup::"
-
       - name: Install Dependencies
         run: |
           cd ${{ inputs.extra || inputs.base }}-addon
@@ -125,14 +94,7 @@ jobs:
           PYTHONWARNINGS: ignore
         run: |
           cd ${{ inputs.extra || inputs.base }}-addon
-          echo "::group::Memory before tests"
-          command -v free >/dev/null 2>&1 && free -h || true
-          df -h . || true
-          echo "::endgroup::"
           uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=.coveragerc --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml || true
-          echo "::group::Memory after tests"
-          command -v free >/dev/null 2>&1 && free -h || true
-          echo "::endgroup::"
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v6
