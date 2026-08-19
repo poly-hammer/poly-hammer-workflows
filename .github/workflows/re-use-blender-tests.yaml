@@ -14,8 +14,10 @@ on:
       addon-id:
         required: true
         type: string
+      # Omit for standalone addons that have no dependency addon; pass the
+      # addon's own repo as `extra` instead.
       base:
-        required: true
+        required: false
         type: string
       base-branch:
         default: "main"
@@ -42,6 +44,7 @@ jobs:
 
     steps:
       - name: Checkout ${{ inputs.base }}-addon Repo
+        if: inputs.base != ''
         uses: actions/checkout@v6
         with:
           repository: "poly-hammer/${{ inputs.base }}-addon"
@@ -52,6 +55,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Checkout ${{ inputs.base }}-bindings Repo
+        if: inputs.base != ''
         uses: actions/checkout@v6
         with:
           repository: "poly-hammer/${{ inputs.base }}-bindings"
@@ -94,7 +98,7 @@ jobs:
           PYTHONWARNINGS: ignore
         run: |
           cd ${{ inputs.extra || inputs.base }}-addon
-          uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=.coveragerc --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml || true
+          uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=pyproject.toml --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml || true
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v6
