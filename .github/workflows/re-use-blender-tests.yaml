@@ -11,6 +11,11 @@ on:
       runner-os:
         required: true
         type: string
+      timeout-minutes:
+        description: "Maximum test job duration in minutes"
+        required: false
+        type: number
+        default: 30
       addon-id:
         required: true
         type: string
@@ -33,7 +38,7 @@ on:
 
 jobs:
   test:
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     name: Tests ${{ inputs.runner-os }} Blender ${{ inputs.blender-version }}
     runs-on: ${{ inputs.runner-os }}
     env:
@@ -45,7 +50,7 @@ jobs:
     steps:
       - name: Checkout ${{ inputs.base }}-addon Repo
         if: inputs.base != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: "poly-hammer/${{ inputs.base }}-addon"
           path: ${{ inputs.base }}-addon
@@ -56,7 +61,7 @@ jobs:
 
       - name: Checkout ${{ inputs.base }}-bindings Repo
         if: inputs.base != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: "poly-hammer/${{ inputs.base }}-bindings"
           path: "${{ inputs.base }}-bindings"
@@ -67,7 +72,7 @@ jobs:
       # so we need to have it checked out to run the tests.
       - name: Checkout ${{ inputs.extra }}-addon Repo
         if: inputs.extra != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: ${{ inputs.extra }}-addon
           lfs: true
@@ -75,7 +80,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
 
@@ -101,14 +106,14 @@ jobs:
           uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=pyproject.toml --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml || true
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./${{ inputs.extra || inputs.base }}-addon/reports/coverage/results.xml
           report_type: "coverage"
 
       - name: Upload test reports to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./${{ inputs.extra || inputs.base }}-addon/reports/pytest/results.xml

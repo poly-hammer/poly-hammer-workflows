@@ -9,6 +9,11 @@ on:
         default: "staging"
         required: true
         type: string
+      timeout-minutes:
+        description: "Maximum release job duration in minutes"
+        required: false
+        type: number
+        default: 30
       addon-id:
         required: true
         type: string
@@ -19,17 +24,18 @@ on:
 jobs:
   release:
     name: Release
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           lfs: true
           submodules: true
           token: ${{ secrets.GH_PAT }}
 
       - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
 
