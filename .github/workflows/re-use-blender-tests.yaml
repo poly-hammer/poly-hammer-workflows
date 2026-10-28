@@ -9,8 +9,17 @@ on:
         required: true
         type: string
       runner-os:
+        description: >-
+          GitHub-hosted runner label. ubuntu-latest, windows-latest and macos-latest run on an
+          organization self-hosted runner when this repository can use one that is available, and
+          on the GitHub-hosted runner otherwise.
         required: true
         type: string
+      self-hosted:
+        description: "Allow the job to run on an organization self-hosted runner"
+        required: false
+        type: boolean
+        default: true
       timeout-minutes:
         description: "Maximum test job duration in minutes"
         required: false
@@ -35,12 +44,154 @@ on:
     secrets:
       GH_PAT:
         required: true
+      RUNNER_READ_TOKEN:
+        description: >-
+          Token with the organization "Self-hosted runners" read permission. Without it every
+          job uses a GitHub-hosted runner.
+        required: false
 
 jobs:
+  select-runner:
+    name: Select runner (${{ inputs.runner-os }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      runs-on: ${{ steps.runner.outputs.runs-on }}
+    steps:
+      - name: Select runner
+        id: runner
+        uses: actions/github-script@v9
+        env:
+          REQUESTED_RUNNER: ${{ inputs.runner-os }}
+          ALLOW_SELF_HOSTED: ${{ inputs.self-hosted }}
+        with:
+          github-token: ${{ secrets.RUNNER_READ_TOKEN || secrets.GH_PAT || github.token }}
+          script: |
+            // Hosted labels that may run on an organization runner instead, and the labels that runner must carry.
+            // GitHub's hosted macOS queue is long enough that waiting for a busy internal Mac is still faster;
+            // hosted Linux and Windows start quickly, so those only move to an idle internal runner.
+            const SELF_HOSTED = {
+              'ubuntu-latest': { labels: ['self-hosted', 'Linux', 'X64'], queueWhenBusy: false },
+              'windows-latest': {
+                labels: ['self-hosted', 'Windows', 'X64'],
+                queueWhenBusy: false,
+              },
+              'macos-latest': { labels: ['self-hosted', 'macOS', 'ARM64'], queueWhenBusy: true },
+            };
+            const requested = process.env.REQUESTED_RUNNER;
+            const org = context.repo.owner;
+            const repoFullName = `${org}/${context.repo.repo}`;
+
+            const select = async (runsOn, reason) => {
+              core.info(reason);
+              core.setOutput('runs-on', JSON.stringify(runsOn));
+              await core.summary
+                .addRaw(`**${requested}** runs on \`${[].concat(runsOn).join(', ')}\`: ${reason}`, true)
+                .write();
+            };
+
+            const policy = SELF_HOSTED[requested];
+            if (!policy) {
+              return select(requested, 'No self-hosted alternative for this label.');
+            }
+            if (process.env.ALLOW_SELF_HOSTED !== 'true') {
+              return select(requested, 'Self-hosted runners are disabled by the caller.');
+            }
+            const pullRequest = context.payload.pull_request;
+            if (pullRequest && pullRequest.head.repo?.full_name !== repoFullName) {
+              return select(requested, 'Pull requests from forks never run on self-hosted runners.');
+            }
+
+            // A missing repository payload is treated as public, which only narrows the runners on offer.
+            const repoIsPublic = context.payload.repository?.private !== true;
+            const wanted = policy.labels;
+            const wantedLabels = wanted.map(label => label.toLowerCase());
+            const matchesLabels = runner => {
+              const labels = new Set(runner.labels.map(label => label.name.toLowerCase()));
+              return wantedLabels.every(label => labels.has(label));
+            };
+            // Runners outside a group this repository may use leave the job queued forever, so access is checked.
+            const groupAccessProblem = async group => {
+              if (repoIsPublic && !group.allows_public_repositories) {
+                return 'does not allow public repositories';
+              }
+              if (group.restricted_to_workflows) {
+                return 'is restricted to selected workflows';
+              }
+              if (group.visibility === 'all') {
+                return null;
+              }
+              if (group.visibility === 'private') {
+                return repoIsPublic ? 'only serves private repositories' : null;
+              }
+              const repositories = await github.paginate(
+                'GET /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories',
+                { org, runner_group_id: group.id, per_page: 100 },
+              );
+              return repositories.some(repository => repository.full_name === repoFullName)
+                ? null
+                : `does not include ${repoFullName}`;
+            };
+
+            try {
+              const groups = await github.paginate('GET /orgs/{org}/actions/runner-groups', { org, per_page: 100 });
+              const unusable = [];
+              const online = [];
+              for (const group of groups) {
+                const runners = (await github.paginate(
+                  'GET /orgs/{org}/actions/runner-groups/{runner_group_id}/runners',
+                  { org, runner_group_id: group.id, per_page: 100 },
+                )).filter(matchesLabels);
+                if (runners.length === 0) {
+                  continue;
+                }
+                const problem = await groupAccessProblem(group);
+                if (problem) {
+                  const names = runners.map(runner => runner.name).join(', ');
+                  unusable.push(`${names} (runner group "${group.name}" ${problem})`);
+                  continue;
+                }
+                for (const runner of runners) {
+                  if (runner.status === 'online') {
+                    online.push(runner);
+                  } else {
+                    unusable.push(`${runner.name} (offline)`);
+                  }
+                }
+              }
+
+              const idle = online.find(runner => !runner.busy);
+              if (idle) {
+                return select(wanted, `Self-hosted runner ${idle.name} is online and idle.`);
+              }
+              const busy = online.map(runner => runner.name).join(', ');
+              if (busy && policy.queueWhenBusy) {
+                return select(wanted, `Self-hosted runner ${busy} is busy; queueing for it.`);
+              }
+              if (busy) {
+                unusable.push(`${busy} (busy)`);
+              }
+              const detail = unusable.length ? unusable.join('; ') : `no runner labelled ${wanted.join(', ')}`;
+              return select(requested, `No available self-hosted runner: ${detail}.`);
+            } catch (error) {
+              core.warning(`Could not list self-hosted runners (HTTP ${error.status ?? 'unknown'}): ${error.message}`);
+              if (error.status === 401 || error.status === 403 || error.status === 404) {
+                core.warning(
+                  'Set the RUNNER_READ_TOKEN secret to a token with the organization "Self-hosted runners" read ' +
+                  'permission to use self-hosted runners.',
+                );
+              }
+              return select(requested, 'Falling back to the GitHub-hosted runner.');
+            }
+
   test:
+    needs: [select-runner]
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    # Named after the requested label so required status checks do not depend on which runner was picked.
     name: Tests ${{ inputs.runner-os }} Blender ${{ inputs.blender-version }}
-    runs-on: ${{ inputs.runner-os }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runs-on) }}
     env:
       PYTHONUNBUFFERED: 1
       CHARACTER_DNA_DEV: 1
@@ -48,6 +199,55 @@ jobs:
       RUNNING_CI: 1
 
     steps:
+      # Git for Windows puts bash.exe in bin\ but only cmd\ on PATH, so on a self-hosted Windows runner
+      # `shell: bash` (ours and codecov's) otherwise resolves to the WSL launcher in System32.
+      - name: Put Git Bash ahead of the WSL launcher
+        if: runner.os == 'Windows' && runner.environment != 'github-hosted'
+        shell: powershell
+        run: |
+          $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:LOCALAPPDATA\Programs" |
+            Where-Object { $_ } |
+            ForEach-Object { Join-Path $_ 'Git' })
+          $git = Get-Command git.exe -ErrorAction SilentlyContinue
+          if ($git) {
+            $roots = @((Get-Item $git.Source).Directory.Parent.FullName) + $roots
+          }
+          $gitBin = $roots |
+            ForEach-Object { Join-Path $_ 'bin' } |
+            Where-Object { Test-Path (Join-Path $_ 'bash.exe') } |
+            Select-Object -First 1
+          if (-not $gitBin) {
+            Write-Output "::error::No Git Bash on this runner. Install Git for Windows."
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $gitBin
+          Write-Output "Using Git Bash from $gitBin"
+
+      # GitHub's Ubuntu image ships these; a self-hosted Linux runner is provisioned for Unreal, not Blender.
+      - name: Install Blender system libraries
+        if: runner.os == 'Linux' && runner.environment != 'github-hosted'
+        shell: bash
+        run: |
+          packages=(git-lfs libegl1 libgl1 libsm6 libxfixes3 libxi6 libxkbcommon0 libxrender1 libxxf86vm1)
+          missing=()
+          for package in "${packages[@]}"; do
+            status=$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)
+            [[ "$status" == *"install ok installed"* ]] || missing+=("$package")
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "All Blender system libraries are installed."
+            exit 0
+          fi
+          echo "Installing ${missing[*]}"
+          sudo=""
+          if [ "$(id -u)" -ne 0 ]; then sudo="sudo -n"; fi
+          export DEBIAN_FRONTEND=noninteractive
+          if ! { $sudo apt-get -o DPkg::Lock::Timeout=300 update -y &&
+            $sudo apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends "${missing[@]}"; }; then
+            echo "::error::Could not install ${missing[*]}. Install them on this runner or give its user passwordless sudo."
+            exit 1
+          fi
+
       - name: Checkout ${{ inputs.base }}-addon Repo
         if: inputs.base != ''
         uses: actions/checkout@v7
@@ -79,7 +279,10 @@ jobs:
           submodules: true
           token: ${{ secrets.GH_PAT }}
 
+      # setup-python's macOS builds only install into /Users/runner/hostedtoolcache, which a
+      # self-hosted Mac does not have, so self-hosted runners get Python from uv instead.
       - name: Set up Python ${{ inputs.python-version }}
+        if: runner.environment == 'github-hosted'
         uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
@@ -90,6 +293,10 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-suffix: "py${{ inputs.python-version }}-bl${{ inputs.blender-version }}"
+
+      - name: Set up Python ${{ inputs.python-version }} with uv
+        if: runner.environment != 'github-hosted'
+        run: uv python install ${{ inputs.python-version }}
 
       - name: Install Dependencies
         run: |
