@@ -40,6 +40,20 @@ on:
       extra:
         required: false
         type: string
+      wheel-artifacts:
+        description: >-
+          Name pattern of artifacts, uploaded earlier in the calling workflow, that hold wheels to
+          install into the test environment. Each distribution installs from the wheel matching
+          the test platform and Python. Leave empty to install none.
+        required: false
+        type: string
+        default: ""
+      test-env:
+        description: >-
+          Extra environment variables for the test run, one NAME=value per line.
+        required: false
+        type: string
+        default: ""
 
     secrets:
       GH_PAT:
@@ -303,6 +317,44 @@ jobs:
           cd ${{ inputs.extra || inputs.base }}-addon
           uv sync --python ${{ inputs.python-version }}
           uv pip install --upgrade bpy==${{ inputs.blender-version }}.*
+
+      - name: Download wheel artifacts
+        if: inputs.wheel-artifacts != ''
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ inputs.wheel-artifacts }}
+          merge-multiple: true
+          path: ci-wheels
+
+      - name: Install wheel artifacts
+        if: inputs.wheel-artifacts != ''
+        shell: bash
+        run: |
+          shopt -s nullglob
+          wheels=(ci-wheels/*.whl)
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error::No wheels found in artifacts matching '${{ inputs.wheel-artifacts }}'."
+            exit 1
+          fi
+          # A wheel's distribution name is the part of its file name before the first dash.
+          names=$(for wheel in "${wheels[@]}"; do basename "$wheel" | cut -d- -f1; done | sort -u)
+          cd ${{ inputs.extra || inputs.base }}-addon
+          uv pip install --no-deps --no-index --find-links ../ci-wheels $names
+
+      - name: Set test environment
+        if: inputs.test-env != ''
+        shell: bash
+        env:
+          TEST_ENV: ${{ inputs.test-env }}
+        run: |
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            if [[ "$line" != *=* ]]; then
+              echo "::error::test-env line '$line' is not NAME=value."
+              exit 1
+            fi
+            echo "$line" >> "$GITHUB_ENV"
+          done <<< "$TEST_ENV"
 
       - name: Run Tests
         shell: bash
