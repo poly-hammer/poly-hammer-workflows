@@ -320,6 +320,13 @@ jobs:
           uv sync --python ${{ inputs.python-version }}
           uv pip install --upgrade bpy==${{ inputs.blender-version }}.*
 
+      # Self-hosted runners keep the workspace root between jobs, and ci-wheels sits outside any
+      # checkout, so wheels from an earlier run would otherwise be installed instead of this run's.
+      - name: Clear earlier wheel artifacts
+        if: inputs.wheel-artifacts != ''
+        shell: bash
+        run: rm -rf ci-wheels
+
       - name: Download wheel artifacts
         if: inputs.wheel-artifacts != ''
         uses: actions/download-artifact@v8
