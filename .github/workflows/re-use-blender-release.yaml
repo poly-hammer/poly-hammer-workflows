@@ -17,6 +17,21 @@ on:
       addon-id:
         required: true
         type: string
+      wheel-artifacts:
+        description: >-
+          Name pattern of artifacts, uploaded earlier in the calling workflow, that hold wheels to
+          bundle into the extension. Their wheels are copied into wheels-dir before packaging, so
+          the manifest's wheels list must name them. Leave empty to bundle none.
+        required: false
+        type: string
+        default: ""
+      wheels-dir:
+        description: >-
+          Folder, relative to the repository root, that the downloaded wheels are copied into.
+          Defaults to src/addons/<addon-id>/wheels.
+        required: false
+        type: string
+        default: ""
     secrets:
       GH_PAT:
         required: true
@@ -47,6 +62,30 @@ jobs:
 
       - name: Install Dependencies
         run: uv sync --upgrade-package poly-hammer-utils
+
+      - name: Download wheel artifacts
+        if: inputs.wheel-artifacts != ''
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ inputs.wheel-artifacts }}
+          merge-multiple: true
+          path: release-wheels
+
+      - name: Bundle wheel artifacts
+        if: inputs.wheel-artifacts != ''
+        shell: bash
+        env:
+          WHEELS_DIR: ${{ inputs.wheels-dir || format('src/addons/{0}/wheels', inputs.addon-id) }}
+        run: |
+          shopt -s nullglob
+          wheels=(release-wheels/*.whl)
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error::No wheels found in artifacts matching '${{ inputs.wheel-artifacts }}'."
+            exit 1
+          fi
+          mkdir -p "$WHEELS_DIR"
+          cp "${wheels[@]}" "$WHEELS_DIR"/
+          ls -l "$WHEELS_DIR"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v6
