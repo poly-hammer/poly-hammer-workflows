@@ -63,6 +63,12 @@ jobs:
       - name: Install Dependencies
         run: uv sync --upgrade-package poly-hammer-utils
 
+      # Only this run's wheels may be bundled, even on a runner that keeps its workspace.
+      - name: Clear earlier wheel artifacts
+        if: inputs.wheel-artifacts != ''
+        shell: bash
+        run: rm -rf release-wheels
+
       - name: Download wheel artifacts
         if: inputs.wheel-artifacts != ''
         uses: actions/download-artifact@v8
