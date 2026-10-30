@@ -374,6 +374,21 @@ jobs:
           cd ${{ inputs.extra || inputs.base }}-addon
           uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=pyproject.toml --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml
 
+      - name: Preserve test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-diagnostics-${{ inputs.addon-id }}-${{ inputs.runner-os }}-${{ inputs.blender-version }}
+          path: |
+            ./${{ inputs.extra || inputs.base }}-addon/reports/test-run.json
+            ./${{ inputs.extra || inputs.base }}-addon/reports/test-run.jsonl
+            ./${{ inputs.extra || inputs.base }}-addon/reports/pytest/
+            ./${{ inputs.extra || inputs.base }}-addon/reports/coverage/results.xml
+            ./${{ inputs.extra || inputs.base }}-addon/.coverage
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload coverage reports to Codecov
         if: >-
           !cancelled() &&
