@@ -1,0 +1,45 @@
+name: Notify Fumadocs
+on:
+  workflow_call:
+    secrets:
+      DOCS_DISPATCH_APP_KEY:
+        required: true
+permissions:
+  contents: read
+jobs:
+  notify:
+    if: github.event_name == 'push' || (github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        id: token
+        with:
+          app-id: ${{ vars.DOCS_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.DOCS_DISPATCH_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: poly-hammer-docs
+          permission-contents: write
+      - name: Send a typed event; the docs receiver verifies it through GitHub
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          DOCS_REPOSITORY: ${{ github.repository_owner }}/poly-hammer-docs
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_EVENT: ${{ github.event_name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          release = os.environ['SOURCE_EVENT'] == 'release'
+          payload = {'schemaVersion': 1, 'repository': os.environ['SOURCE_REPOSITORY'], 'kind': 'release' if release else 'main'}
+          if release:
+              payload['releaseId'] = int(os.environ['RELEASE_ID'])
+          else:
+              if os.environ['SOURCE_REF'] != 'refs/heads/main':
+                  raise ValueError('Only main pushes may publish staging docs')
+              payload.update(ref=os.environ['SOURCE_REF'], sha=os.environ['SOURCE_SHA'])
+          body = {'event_type': 'docs-release-v1' if release else 'docs-main-v1', 'client_payload': payload}
+          subprocess.run(['gh', 'api', '--method', 'POST', 'repos/' + os.environ['DOCS_REPOSITORY'] + '/dispatches', '--input', '-'], input=json.dumps(body), text=True, check=True)
+          PY

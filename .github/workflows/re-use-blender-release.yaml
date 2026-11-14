@@ -7,7 +7,7 @@ on:
         type: string
       environment:
         default: "staging"
-        required: true
+        required: false
         type: string
       timeout-minutes:
         description: "Maximum release job duration in minutes"
@@ -35,6 +35,14 @@ on:
     secrets:
       GH_PAT:
         required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      POLY_HAMMER_PORTAL_API_KEY_PRODUCTION:
+        required: false
+      POLY_HAMMER_PORTAL_API_KEY_STAGING:
+        required: false
 
 jobs:
   release:
@@ -62,6 +70,19 @@ jobs:
 
       - name: Install Dependencies
         run: uv sync --upgrade-package poly-hammer-utils
+
+      # Only replace the release identity helper; keep each product's packaging
+      # implementation and native-wheel handling from its installed helper version.
+      - name: Install the immutable release identity helper
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh api 'repos/poly-hammer/poly-hammer-utils/contents/src/poly_hammer_utils/extension/release.py?ref=2354d851722599b4b16ad414b764eb50ab3ff66e' --jq .content | base64 --decode > "$RUNNER_TEMP/docs-release.py"
+          uv run --no-sync python - <<'PY'
+          import os, shutil
+          import poly_hammer_utils.extension.release as release
+          shutil.copyfile(os.path.join(os.environ['RUNNER_TEMP'], 'docs-release.py'), release.__file__)
+          PY
 
       # Only this run's wheels may be bundled, even on a runner that keeps its workspace.
       - name: Clear earlier wheel artifacts
@@ -107,4 +128,4 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           ENVIRONMENT: ${{ inputs.environment }}
           PORTAL_API_KEY: ${{ inputs.environment == 'production' && secrets.POLY_HAMMER_PORTAL_API_KEY_PRODUCTION || secrets.POLY_HAMMER_PORTAL_API_KEY_STAGING }}
-        run: uv run python -m poly_hammer_utils.extension.${{ inputs.addon-id }}
+        run: uv run --no-sync python -m poly_hammer_utils.extension.${{ inputs.addon-id }}
