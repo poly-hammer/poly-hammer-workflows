@@ -7,7 +7,7 @@ on:
         type: string
       environment:
         default: "staging"
-        required: true
+        required: false
         type: string
       timeout-minutes:
         description: "Maximum release job duration in minutes"
@@ -35,12 +35,21 @@ on:
     secrets:
       GH_PAT:
         required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      POLY_HAMMER_PORTAL_API_KEY_PRODUCTION:
+        required: false
+      POLY_HAMMER_PORTAL_API_KEY_STAGING:
+        required: false
 
 jobs:
   release:
     name: Release
     timeout-minutes: ${{ inputs.timeout-minutes }}
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7
@@ -48,6 +57,7 @@ jobs:
           lfs: true
           submodules: true
           token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
 
       - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v7
@@ -61,7 +71,7 @@ jobs:
           enable-cache: true
 
       - name: Install Dependencies
-        run: uv sync --upgrade-package poly-hammer-utils
+        run: uv sync --locked --python ${{ inputs.python-version }}
 
       # Only this run's wheels may be bundled, even on a runner that keeps its workspace.
       - name: Clear earlier wheel artifacts
@@ -107,4 +117,4 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           ENVIRONMENT: ${{ inputs.environment }}
           PORTAL_API_KEY: ${{ inputs.environment == 'production' && secrets.POLY_HAMMER_PORTAL_API_KEY_PRODUCTION || secrets.POLY_HAMMER_PORTAL_API_KEY_STAGING }}
-        run: uv run python -m poly_hammer_utils.extension.${{ inputs.addon-id }}
+        run: uv run --no-sync python -m poly_hammer_utils.extension.${{ inputs.addon-id }}
