@@ -25,6 +25,14 @@ on:
         required: false
         type: number
         default: 30
+      minimum-free-space-gib:
+        description: >-
+          Minimum available GiB on the workspace and temporary volumes before a self-hosted
+          job installs dependencies. GitHub-hosted jobs only report free space. Set to 0 to
+          report without enforcing a minimum.
+        required: false
+        type: number
+        default: 20
       addon-id:
         required: true
         type: string
@@ -51,6 +59,7 @@ on:
       test-env:
         description: >-
           Extra environment variables for the test run, one NAME=value per line.
+          Temporary storage variables are managed by this workflow.
         required: false
         type: string
         default: ""
@@ -192,6 +201,18 @@ jobs:
       RUNNING_CI: 1
 
     steps:
+      # Register first so its post action runs LAST: diagnostics, uv cache saving and checkout's
+      # credential cleanup must finish before any checkout or cache directory is removed.
+      # Keep this action in the shared repository; callers need no helper files or new inputs.
+      - name: Prepare job storage and check free space
+        id: storage
+        uses: poly-hammer/poly-hammer-workflows/.github/actions/runner-storage@main
+        with:
+          base: ${{ inputs.base }}
+          extra: ${{ inputs.extra }}
+          runner-environment: ${{ runner.environment }}
+          minimum-free-space-gib: ${{ inputs.minimum-free-space-gib }}
+
       # Git for Windows puts bash.exe in bin\ but only cmd\ on PATH, so on a self-hosted Windows runner
       # `shell: bash` (ours and codecov's) otherwise resolves to the WSL launcher in System32.
       - name: Put Git Bash ahead of the WSL launcher
@@ -286,6 +307,7 @@ jobs:
           version: "latest"
           enable-cache: true
           cache-suffix: "py${{ inputs.python-version }}-bl${{ inputs.blender-version }}"
+          cache-local-path: ${{ steps.storage.outputs.cache-directory }}
 
       - name: Set up Python ${{ inputs.python-version }} with uv
         if: runner.environment != 'github-hosted'
@@ -297,27 +319,22 @@ jobs:
           uv sync --python ${{ inputs.python-version }}
           uv pip install --upgrade bpy==${{ inputs.blender-version }}.*
 
-      # Self-hosted runners keep the workspace root between jobs, and ci-wheels sits outside any
-      # checkout, so wheels from an earlier run would otherwise be installed instead of this run's.
-      - name: Clear earlier wheel artifacts
-        if: inputs.wheel-artifacts != ''
-        shell: bash
-        run: rm -rf ci-wheels
-
       - name: Download wheel artifacts
         if: inputs.wheel-artifacts != ''
         uses: actions/download-artifact@v8
         with:
           pattern: ${{ inputs.wheel-artifacts }}
           merge-multiple: true
-          path: ci-wheels
+          path: ${{ steps.storage.outputs.wheels-directory }}
 
       - name: Install wheel artifacts
         if: inputs.wheel-artifacts != ''
         shell: bash
+        env:
+          WHEELS_DIRECTORY: ${{ steps.storage.outputs.wheels-directory }}
         run: |
           shopt -s nullglob
-          wheels=(ci-wheels/*.whl)
+          wheels=("$WHEELS_DIRECTORY"/*.whl)
           if [ ${#wheels[@]} -eq 0 ]; then
             echo "::error::No wheels found in artifacts matching '${{ inputs.wheel-artifacts }}'."
             exit 1
@@ -325,7 +342,7 @@ jobs:
           # A wheel's distribution name is the part of its file name before the first dash.
           names=$(for wheel in "${wheels[@]}"; do basename "$wheel" | cut -d- -f1; done | sort -u)
           cd ${{ inputs.extra || inputs.base }}-addon
-          uv pip install --no-deps --no-index --find-links ../ci-wheels $names
+          uv pip install --no-deps --no-index --find-links "$WHEELS_DIRECTORY" $names
 
       - name: Set test environment
         if: inputs.test-env != ''
@@ -339,6 +356,12 @@ jobs:
               echo "::error::test-env line '$line' is not NAME=value."
               exit 1
             fi
+            case "${line%%=*}" in
+              TMPDIR|TMP|TEMP|PYTEST_DEBUG_TEMPROOT|UV_CACHE_DIR)
+                echo "::error::Temporary storage variable '${line%%=*}' is managed by this workflow."
+                exit 1
+                ;;
+            esac
             echo "$line" >> "$GITHUB_ENV"
           done <<< "$TEST_ENV"
 
@@ -347,9 +370,12 @@ jobs:
         shell: bash
         env:
           PYTHONWARNINGS: ignore
+          PYTEST_BASETEMP: ${{ steps.storage.outputs.pytest-directory }}
         run: |
           cd ${{ inputs.extra || inputs.base }}-addon
-          uv run --no-sync --python ${{ inputs.python-version }} pytest --cov-branch --cov-config=pyproject.toml --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml
+          mkdir -p reports
+          # bash's pipefail keeps pytest's exit status when tee preserves output after a native crash.
+          uv run --no-sync --python ${{ inputs.python-version }} pytest --basetemp "$PYTEST_BASETEMP" --cov-branch --cov-config=pyproject.toml --cov=src/addons/${{ inputs.addon-id }} --cov-report=xml:reports/coverage/results.xml 2>&1 | tee reports/pytest-console.log
 
       - name: Preserve test diagnostics
         if: always()
@@ -359,6 +385,7 @@ jobs:
           path: |
             ./${{ inputs.extra || inputs.base }}-addon/reports/test-run.json
             ./${{ inputs.extra || inputs.base }}-addon/reports/test-run.jsonl
+            ./${{ inputs.extra || inputs.base }}-addon/reports/pytest-console.log
             ./${{ inputs.extra || inputs.base }}-addon/reports/pytest/
             ./${{ inputs.extra || inputs.base }}-addon/reports/coverage/results.xml
             ./${{ inputs.extra || inputs.base }}-addon/.coverage

@@ -1,0 +1,35 @@
+name: Test runner storage cleanup
+on:
+  pull_request:
+    paths:
+      - .github/actions/runner-storage/**
+      - .github/workflows/re-use-blender-tests.yaml
+      - .github/workflows/test-runner-storage.yaml
+      - tests/runner-storage.test.cjs
+  push:
+    branches: [main]
+    paths:
+      - .github/actions/runner-storage/**
+      - .github/workflows/re-use-blender-tests.yaml
+      - .github/workflows/test-runner-storage.yaml
+      - tests/runner-storage.test.cjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Test ownership, recovery and independent post-job cleanup
+        run: node --test tests/runner-storage.test.cjs

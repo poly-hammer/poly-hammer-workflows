@@ -1,0 +1,27 @@
+name: Blender test job storage
+description: Isolate disposable files and clean owned workspaces after all other post-job actions.
+inputs:
+  base:
+    description: Base repository prefix, such as character-dna.
+    default: ""
+  extra:
+    description: Extra repository prefix, such as character-control-rig.
+    default: ""
+  runner-environment:
+    description: The runner.environment context, used to enforce the disk minimum only on self-hosted runners.
+    required: true
+  minimum-free-space-gib:
+    description: Minimum free GiB on each volume before dependency installation; 0 only reports.
+    default: "20"
+outputs:
+  pytest-directory:
+    description: Dedicated pytest --basetemp directory, separate from general temporary files.
+  cache-directory:
+    description: uv package cache to retain until setup-uv finishes its post-job upload.
+  wheels-directory:
+    description: Destination for this job's downloaded wheel artifacts.
+runs:
+  using: node24
+  main: main.cjs
+  post: post.cjs
+  post-if: always()
