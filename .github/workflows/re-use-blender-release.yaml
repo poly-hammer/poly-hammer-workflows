@@ -73,6 +73,19 @@ jobs:
       - name: Install Dependencies
         run: uv sync --locked --python ${{ inputs.python-version }}
 
+      # Only replace the release identity helper; keep each product's packaging
+      # implementation and native-wheel handling from its installed helper version.
+      - name: Install the immutable release identity helper
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh api 'repos/poly-hammer/poly-hammer-utils/contents/src/poly_hammer_utils/extension/release.py?ref=2354d851722599b4b16ad414b764eb50ab3ff66e' --jq .content | base64 --decode > "$RUNNER_TEMP/docs-release.py"
+          uv run --no-sync python - <<'PY'
+          import os, shutil
+          import poly_hammer_utils.extension.release as release
+          shutil.copyfile(os.path.join(os.environ['RUNNER_TEMP'], 'docs-release.py'), release.__file__)
+          PY
+
       # Only this run's wheels may be bundled, even on a runner that keeps its workspace.
       - name: Clear earlier wheel artifacts
         if: inputs.wheel-artifacts != ''
