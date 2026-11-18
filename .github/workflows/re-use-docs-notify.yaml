@@ -2,7 +2,7 @@ name: Notify Fumadocs
 on:
   workflow_call:
     secrets:
-      DOCS_GITHUB_TOKEN:
+      GH_PAT:
         required: true
 permissions:
   contents: read
@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Send a typed event; the docs receiver verifies it through GitHub
         env:
-          GH_TOKEN: ${{ secrets.DOCS_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           DOCS_REPOSITORY: ${{ github.repository_owner }}/poly-hammer-docs
           SOURCE_REPOSITORY: ${{ github.repository }}
           SOURCE_REF: ${{ github.ref }}
@@ -25,7 +25,7 @@ jobs:
           python - <<'PY'
           import json, os, subprocess
           if not os.environ['GH_TOKEN']:
-              raise ValueError('Configure DOCS_GITHUB_TOKEN as a repository or organization Actions secret')
+              raise ValueError('Configure GH_PAT as a repository or organization Actions secret')
           release = os.environ['SOURCE_EVENT'] == 'release'
           payload = {'schemaVersion': 1, 'repository': os.environ['SOURCE_REPOSITORY'], 'kind': 'release' if release else 'main'}
           if release:
