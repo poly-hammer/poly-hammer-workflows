@@ -2,7 +2,7 @@ name: Notify Fumadocs
 on:
   workflow_call:
     secrets:
-      DOCS_DISPATCH_APP_KEY:
+      DOCS_GITHUB_TOKEN:
         required: true
 permissions:
   contents: read
@@ -12,17 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        id: token
-        with:
-          app-id: ${{ vars.DOCS_DISPATCH_APP_ID }}
-          private-key: ${{ secrets.DOCS_DISPATCH_APP_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: poly-hammer-docs
-          permission-contents: write
       - name: Send a typed event; the docs receiver verifies it through GitHub
         env:
-          GH_TOKEN: ${{ steps.token.outputs.token }}
+          GH_TOKEN: ${{ secrets.DOCS_GITHUB_TOKEN }}
           DOCS_REPOSITORY: ${{ github.repository_owner }}/poly-hammer-docs
           SOURCE_REPOSITORY: ${{ github.repository }}
           SOURCE_REF: ${{ github.ref }}
@@ -32,6 +24,8 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, subprocess
+          if not os.environ['GH_TOKEN']:
+              raise ValueError('Configure DOCS_GITHUB_TOKEN as a repository or organization Actions secret')
           release = os.environ['SOURCE_EVENT'] == 'release'
           payload = {'schemaVersion': 1, 'repository': os.environ['SOURCE_REPOSITORY'], 'kind': 'release' if release else 'main'}
           if release:
